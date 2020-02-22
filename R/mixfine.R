@@ -39,7 +39,7 @@
 #'
 #' @export
 #' @importFrom susieR susie
-mixfine = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, trc_cutoff = 20, asc_cutoff = 5, weight_cap = 100, asc_cap = 5000) {
+mixfine = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, trc_cutoff = 20, asc_cutoff = 5, weight_cap = 100, asc_cap = 5000, ...) {
   # prepare X
   h1 = geno1
   h1[is.na(h1)] = 0.5
@@ -96,11 +96,17 @@ mixfine = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, tr
   }
 
   # training
-  if(sum(df$inpt == 0) >= 20) {
-    susie_data1 = approx_susie(X[df$inpt == 0, , drop = F], df$y[df$inpt == 0], w = df$weights[df$inpt == 0], intercept = FALSE)
+  if(sum(df$inpt == 0) >= 30) {
+    susie_data1 = approx_susie(X[df$inpt == 0, , drop = F], df$y[df$inpt == 0], w = df$weights[df$inpt == 0], intercept = FALSE, ...)
     # impute effective y and X
-    X1 = susie_data1$x  # diag(sqrt(df$weights[df$inpt == 0])) %*% X[df$inpt == 0, , drop = F] / susie_data1$sigma
-    y1 = susie_data1$y
+    if(is.null(susie_data1)) {  # check if the estimation of sigma failed ..
+      X1 = NULL
+      y1 = NULL
+      susie_data1 = NULL
+    } else {
+      X1 = susie_data1$x  # diag(sqrt(df$weights[df$inpt == 0])) %*% X[df$inpt == 0, , drop = F] / susie_data1$sigma
+      y1 = susie_data1$y
+    }
   } else {
     X1 = NULL
     y1 = NULL
@@ -113,10 +119,11 @@ mixfine = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, tr
   # X1 = diag(sqrt(df$weights[df$inpt == 0])) %*% X[df$inpt == 0, , drop = F] / susie_data1$sigma
   X2 = susie_data2$x  # X[df$inpt == 1, , drop = F] / susie_data2$sigma
   X = rbind(X1, X2)
+  ## debugging comment 
   mod222 = susie(X2, susie_data2$y, standardize = F, intercept = T)
-  y2 = susie_data2$y - mod222$intercept
+  y2 = susie_data2$y - mod222$intercept  # susie_data2$y - mean(susie_data2$y)  #
   # for debug
-  # dd = df
+  dd = df
   # 
   df = data.frame(y = c(y1, y2))
 
@@ -128,7 +135,7 @@ mixfine = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, tr
   
   # for debug:
   # original:
-  mod
+  # mod
   # new:
-  # list(mod = mod, susie_data1 = susie_data1, X = X, y = df$y, dd = dd)
+  list(mod = mod, susie_data1 = susie_data1, X = X, y = df$y, dd = dd)
 }

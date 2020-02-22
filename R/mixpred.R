@@ -96,7 +96,7 @@ mixpred = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, tr
   df$weights[df$inpt == 0] = weights_asc
 
   # training
-  if(sum(df$inpt == 0) >= 15) {
+  if(sum(df$inpt == 0) >= 30) {
     susie_data1 = approx_susie(X[df$inpt == 0, , drop = F], df$y[df$inpt == 0], w = df$weights[df$inpt == 0], intercept = FALSE)
     # impute effective y and X
     X1 = diag(sqrt(df$weights[df$inpt == 0])) %*% X[df$inpt == 0, , drop = F] / susie_data1$sigma

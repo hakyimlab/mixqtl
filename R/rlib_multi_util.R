@@ -15,7 +15,10 @@
 
 #' @importFrom glmnet cv.glmnet
 #' @importFrom stats coef residuals
-approx_susie = function(x, y, w = NULL, intercept = T, only_weight = F) {
+approx_susie = function(x, y, w = NULL, intercept = T, only_weight = F, loocv = F, debug_sigma = NULL, skip = F, sigma_eq_sd = F) {
+  if(skip == T) {
+    return(NULL)
+  }
   if(!is.null(w)) {
     x_susie = mydiag(sqrt(w)) %*% x
     y_susie = mydiag(sqrt(w)) %*% y
@@ -27,18 +30,50 @@ approx_susie = function(x, y, w = NULL, intercept = T, only_weight = F) {
     if(only_weight == T) {
       return(list(x = x_susie, y = y_susie))
     }
-    mod = glmnet::cv.glmnet(x, y, weights = w, standardize = F, intercept = intercept, nfold = 4)
-    # To stablize the estimation of sigma, we calculate MSE using best beta according to CV mean, CV low, CV up and take the max value 
-    beta1 = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvm)])
-    beta2 = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvlo)])
-    beta3 = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvup)])
-    x_pred = cbind(rep(1, nrow(x)), x)
-    # sigma = sqrt(sum((y - x_pred %*% beta)^2) / sum(1 / w))
-    sigma1 = sqrt(mean((y - x_pred %*% beta1)^2 * w))
-    sigma2 = sqrt(mean((y - x_pred %*% beta2)^2 * w))
-    sigma3 = sqrt(mean((y - x_pred %*% beta3)^2 * w))
-    sigma = max(c(sigma1, sigma2, sigma3))
-     
+
+    if(loocv == T) {
+      xtx = t(x_susie) %*% x_susie
+      message('start')
+      m = svd(x_susie)
+      pinv_xtx = m$v %*% mydiag(1 / m$d ^ 2) %*% t(m$v)
+      # pinv_xtx = corpcor::pseudoinverse(xtx)  # pracma::pinv(xtx)
+      message('end')
+      xtxinv_xt =  pinv_xtx %*% t(x_susie)
+      hat = x_susie %*% xtxinv_xt
+      betahat = xtxinv_xt %*% y_susie
+      yhat = x_susie %*% betahat
+      loocv_error = (y_susie - yhat) / (1 - diag(hat))
+      loocv_error_clean = loocv_error[!is.infinite(loocv_error)]
+      sigma = sqrt(mean(loocv_error_clean ^ 2))
+      return(list(x = x_susie / sigma, y = y_susie / sigma, sigma = sigma, mod = list(loocv_error = loocv_error)))
+    }
+    if(sigma_eq_sd == F) {
+      mod = glmnet::cv.glmnet(x, y, weights = w, standardize = F, intercept = intercept, nfold = 10)
+      # To stablize the estimation of sigma, we calculate MSE using best beta according to CV mean, CV low, CV up and take the max value 
+      if((which.min(mod$cvm) == which.min(mod$cvlo) & which.min(mod$cvm) == which.min(mod$cvup)) & (which.min(mod$cvm) == length(mod$cvm) | which.min(mod$cvm) == 1)) {
+        # this if is checking that the sparsity parameter lambda is being optimized by not being taken the min or max value
+        return(NULL)
+      }
+      beta1 = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvm)])
+      beta2 = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvlo)])
+      beta3 = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvup)])
+      x_pred = cbind(rep(1, nrow(x)), x)
+      # sigma = sqrt(sum((y - x_pred %*% beta)^2) / sum(1 / w))
+      sigma1 = sqrt(mean((y - x_pred %*% beta1)^2 * w))
+      sigma2 = sqrt(mean((y - x_pred %*% beta2)^2 * w))
+      sigma3 = sqrt(mean((y - x_pred %*% beta3)^2 * w))
+      sigma = max(c(sigma1, sigma2, sigma3))
+    } else {
+      ### DEBUG FIXME !!!!!!!!!
+      sigma = sd(y_susie)
+      mod = 'sigma_eq_sd'
+    }
+    if(!is.null(debug_sigma)) {
+      sigma = debug_sigma
+      mod = 'debug_sigma'
+      ### END DEBUG
+    }
+ 
     # for further debugging
     #
     # mod = glmnet::cv.glmnet(x_susie, y_susie, standardize = F, intercept = intercept)
@@ -46,7 +81,7 @@ approx_susie = function(x, y, w = NULL, intercept = T, only_weight = F) {
     # x_pred = cbind(rep(1, nrow(x_susie)), x_susie)
     # sigma = sqrt(mean((y_susie - x_pred %*% beta)^2))
 
-    return(list(x = x_susie / sigma, y = y_susie / sigma, sigma = sigma))  # , mod = mod))
+    return(list(x = x_susie / sigma, y = y_susie / sigma, sigma = sigma, mod = mod))
   } else {
     mod = glmnet::cv.glmnet(x, y, standardize = F, intercept = intercept)
     beta = as.vector(coef(mod$glmnet.fit)[, which.min(mod$cvm)])
@@ -61,13 +96,19 @@ approx_susie = function(x, y, w = NULL, intercept = T, only_weight = F) {
 
 #' @importFrom susieR susie
 run_susie_default = function(x, y, ...) {
+  # success = T
   mod = tryCatch({
     susie(x, y, ...)
   }, error = function(e) {
     vars = data.frame(variable = 1 : ncol(x), variable_prob = 0, cs = -1)
-    list(vars = vars, cs = NULL)
+    list(vars = vars, cs = NULL, success = F)
   })
-  mod
+  if('success' %in% names(mod)) {
+    if(mod$success == F) {
+      return(list(mod = mod, success = F))
+    }
+  }
+  return(list(success = T, mod = mod))
 }
 
 mydiag = function(vals) {
