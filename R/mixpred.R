@@ -42,7 +42,7 @@
 #'
 #' @export
 #' @importFrom susieR susie
-mixpred = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, trc_cutoff = 20, asc_cutoff = 5, weight_cap = 100, asc_cap = 5000, alpha = 0.5, nfold = 5, nobs_asc_cutoff = 1, ...) {
+mixpred = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, trc_cutoff = 20, asc_cutoff = 5, weight_cap = 100, asc_cap = 5000, alpha = 0.5, nfold = 5, nobs_asc_cutoff = 1) {
   # prepare X
   h1 = geno1
   h1[is.na(h1)] = 0.5
@@ -99,40 +99,34 @@ mixpred = function(geno1, geno2, y1, y2, ytotal, lib_size, cov_offset = NULL, tr
   }
 
   # training
+  
+  # dealing with asc
   if(sum(df$inpt == 0) >= nobs_asc_cutoff) {
-    susie_data1 = approx_susie(X[df$inpt == 0, , drop = F], df$y[df$inpt == 0], w = df$weights[df$inpt == 0], intercept = FALSE)
-    # impute effective y and X
-    if(is.na(susie_data1$sigma)) {
-      X1 = NULL
-      y1 = NULL
-      susie_data1 = NULL
-    } else {
-      X1 = diag(sqrt(df$weights[df$inpt == 0])) %*% X[df$inpt == 0, , drop = F] / susie_data1$sigma
-      y1 = susie_data1$y
-    }
+    tilde_y1 = sqrt(df$weights[df$inpt == 0]) * df$y[df$inpt == 0]
+    tilde_x1 = sweep(X[df$inpt == 0, , drop = F], 1, sqrt(df$weights[df$inpt == 0]), FUN = '*')  # sweep(y, 1, x, FUN = '*')
+    s1_sq = calc_var(tilde_y1, tilde_x1)
+    X1 = tilde_x1 / sqrt(s1_sq)
+    Y1 = tilde_y1 / sqrt(s1_sq)
   } else {
     X1 = NULL
-    y1 = NULL
-  }
-  # susie_data1 = approx_susie(X[df$inpt == 0, , drop = F], df$y[df$inpt == 0], w = df$weights[df$inpt == 0], intercept = FALSE)
-  susie_data2 = approx_susie(X[df$inpt == 1, , drop = F], df$y[df$inpt == 1], w = NULL, intercept = TRUE)
-
-  if(is.na(susie_data2$sigma)) {
-    message('Unexpected failure of fitting sigma for total counts. Too few observations? Quit!')
-    quit()
+    Y1 = NULL
   }
 
-  # impute effective y and X
-  # X1 = diag(sqrt(df$weights[df$inpt == 0])) %*% X[df$inpt == 0, , drop = F] / susie_data1$sigma
-  X2 = X[df$inpt == 1, , drop = F] / susie_data2$sigma
+  # dealing with trc
+  x2 = X[df$inpt == 1, , drop = F]
+  y2 = df$y[df$inpt == 1]
+  s2_sq = calc_var(y2, x2, fixed_effect = matrix(1, nrow = nrow(x2), ncol = 1))
+  y2 = y2 / sqrt(s2_sq)
+  x2 = x2 / sqrt(s2_sq)
+  Y2 = y2 - mean(y2)
+  X2 = sweep(x2, 2, colMeans(x2), FUN = '-')
+
   X = rbind(X1, X2)
-  mod222 = susie(X2, susie_data2$y, standardize = F, intercept = T)
-  y2 = susie_data2$y - mod222$intercept
-  df = data.frame(y = c(y1, y2))
+  Y = c(Y1, Y2)
 
 
   # fit elastic net model with imputed y and X
-  mod = fit_glmnet_with_cv(X, df$y, nfold = nfold, alpha = alpha, ...)  # intercept = F)
+  mod = fit_glmnet_with_cv(X, Y, nfold = nfold, alpha = alpha, standardize = F, intercept = F)
   
   mod
 }

@@ -14,3 +14,4 @@ The manuscript describing the details of the approach can be found [here](https:
 
 Find detailed instructions on how to run mixQTL [here](https://github.com/hakyimlab/mixqtl/wiki) via the command line tool or R  functions. 
 A computationally efficient GPU-based implementation of mixQTL is embedded in the tensorQTL software [here](https://github.com/broadinstitute/tensorqtl)
+

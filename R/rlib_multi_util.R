@@ -198,3 +198,15 @@ do_elastic_net <- function(cis_gt, expr_adj, n_folds, cv_fold_ids, alpha, ...) {
   out
 }
 ## END
+
+#' @importFrom emma emma.MLE.noX emma.MLE
+calc_var = function(y, x, fixed_effect = NULL) {
+  kinship = x %*% t(x)
+  if(is.null(fixed_effect)) {
+    res = emma.MLE.noX(y, kinship)
+    return(res$ve)
+  } else {
+    res = emma.MLE(y, fixed_effect, kinship)
+    return(res$ve)
+  }
+}

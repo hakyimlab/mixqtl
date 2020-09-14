@@ -1,2 +1,6 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+third_party
+TODO.md
+scripts
+UPDATE_NOTES.md
